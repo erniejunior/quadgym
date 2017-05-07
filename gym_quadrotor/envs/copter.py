@@ -4,6 +4,7 @@
 """
 
 import numpy as np
+from .propeller import Propeller
 
 class CopterParams(object):
     def __init__(self):
@@ -11,65 +12,64 @@ class CopterParams(object):
         self.b = 5.324e-5   # Thrust coefficient
         self.d = 8.721e-7   # Drag coefficient
         self.m = 0.723      # Mass
-        self.I = np.array([[8.678e-3,0,0],[0,8.678e-3,0],[0,0,3.217e-2]]) # Inertia
+        
         self.J = 7.321e-5   # Rotor inertia
-
 
 class CopterStatus(object):
     def __init__(self):
-        self.position = np.array([0.0, 0, 0])
-        self.velocity = np.array([0.0, 0, 0])
-        self.attitude = np.array([0.0, 0, 0])
-        self.angular_velocity = np.array([0.0, 0, 0])
+        self.position = np.zeros(3)
+        self.velocity = np.zeros(3)
+        self.attitude = np.zeros(3)
+        self.angular_velocity = np.zeros(3)
+        self.rotor_speeds = np.zeros(4)
 
     @property
     def altitude(self):
         return self.position[2]
 
+class CopterSetup(object):
+    def __init__(self):
+        # rotor aerodynamcis coefficients
+        self.a = 5.324e-5
+        self.b = 8.721e-7
 
-def calc_acceleration(status, params, control):
-    b = params.b
-    I = params.I
-    l = params.l
-    m = params.m
-    J = params.J
-    d = params.d
-    g = 9.81
+        # more parameters
+        self.mu = np.array([1, 1, 1, 1]) * 1e-5
+        self.lm = np.array([1, 1, 1, 1]) * 1e-5
 
-    attitude = status.attitude
-    avel     = status.angular_velocity
-    roll     = attitude[0]
-    pitch    = attitude[1]
-    yaw      = attitude[2]
+        self.l = 0.31   # Arm length
+        self.m = 0.723  # mass
+        self.J = 7.321e-5   # Rotor inertia
+        self.iI = np.linalg.inv([[8.678e-3,0,0],[0,8.678e-3,0],[0,0,3.217e-2]]) # inverse Inertia (assumed to be diagonal)
 
-    droll    = avel[0]
-    dpitch   = avel[1]
-    dyaw     = avel[2]
+        cfg = {'a': self.a, 'b': self.b, 'lm': self.lam, 'mu': self.mu, 'axis': [0,0,1]}
+        P1 = Propeller(d=1, p = self.l*np.array([1,0,0]), **cfg)
+        P2 = Propeller(d=1, p = -self.l*np.array([1,0,0]), **cfg)
+        P3 = Propeller(d=-1, p = self.l*np.array([0,1,0]), **cfg)
+        P4 = Propeller(d=-1, p = -self.l*np.array([0,1,0]), **cfg)
 
-    # damn, have to calculate this
-    U1s = control[0] / b
-    U2s = control[1] / b
-    U3s = control[2] / b
-    U4s = control[3] / d
-    U13 = (U1s + U4s) / 2
-    U24 = (U1s - U4s) / 2
-    O1 = np.sqrt(abs(U13 + U3s)/2)
-    O3 = np.sqrt(abs(U13 - U3s)/2)
-    O2 = np.sqrt(abs(U24 - U2s)/2)
-    O4 = np.sqrt(abs(U24 + U2s)/2)
-    Or = -O1 + O2 - O3 + O4
+        self.propellers = [P1, P2, P3, P4]
 
-    c0 =  (4*control[0] + 1.0) *  m*g
-    a0  = c0 * ( np.cos(roll)*np.sin(pitch)*np.cos(yaw) + np.sin(roll)*np.sin(yaw) ) / m
-    a1  = c0 * ( np.cos(roll)*np.sin(pitch)*np.sin(yaw) + np.sin(roll)*np.cos(yaw) ) / m
-    a2  = c0 * ( np.cos(roll)*np.cos(pitch) ) / m - g
 
-    
-    aroll  = (dpitch * dyaw * (I[1, 1] - I[2, 2]) + dpitch * Or * J + control[1] * l) / I[0, 0]
-    apitch = (droll  * dyaw * (I[2, 2] - I[0, 0]) + droll * Or * J  + control[2] * l) / I[1, 1]
-    ayaw   = (droll  * dyaw * (I[0, 0] - I[1, 1]) + control[3] * l) / I[2, 2]
+def calc_forces(setup, status):
+    moment = np.zeros(3)
+    force  = np.zeros(3)
 
-    return np.array([a0, a1, a2]), np.array([aroll, apitch, ayaw])
+    for p, w in zip(setup.propellers, status.rotor_speeds):
+        f, m = p.get_dynamics(w, status)
+        force  += f 
+        moment += m
+
+    force += setup.m * np.array([0.0,0.0, -9.81])
+
+    return force, moment
+
+def calc_accelerations(setup, status, control):
+    force, moment = calc_forces(setup, status)
+
+    lin_acc = force / setup.m
+    ang_acc = np.dot(setup.iI, moment)
+    rot_acc = 0
 
 def simulate(status, params, control, dt):
     ap, aa  = calc_acceleration(status, params, control)
