@@ -6,6 +6,7 @@ import numpy as np
 from collections import deque
 
 from .copter import *
+from . import geo
 
 
 class CopterEnv(gym.Env):
@@ -20,13 +21,13 @@ class CopterEnv(gym.Env):
         self.viewer = None
         high = np.array([np.inf]*10)
         
-        self.copterparams = CopterParams()
+        self.setup = CopterSetup()
         self.observation_space = spaces.Box(-high, high)
-        self.action_space = spaces.Box(-1, 1, (4,))
+        self.action_space = spaces.Box(0, 1, (4,))
 
         self.target         = np.zeros(3)
         self.threshold      =  2 * math.pi / 180
-        self.fail_threshold = 15 * math.pi / 180
+        self.fail_threshold = 10 * math.pi / 180
         self._fail_count    = 0
 
         self._seed()
@@ -38,8 +39,9 @@ class CopterEnv(gym.Env):
     def _step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
         
-        control = np.array(action) * 0.01
-        simulate(self.copterstatus, self.copterparams, control, 0.1)
+        control = np.array(action)
+        for i in range(10):
+            simulate(self.copterstatus, self.setup, control, 0.01)
 
         err = np.max(np.abs(self.copterstatus.attitude - self.target))
 
@@ -99,6 +101,8 @@ class CopterEnv(gym.Env):
         return np.concatenate([s.attitude, s.angular_velocity, self.target, [s.position[2]]])
 
     def _render(self, mode='human', close=False):
+        from gym.envs.classic_control import rendering
+
         if close:
             if self.viewer is not None:
                 self.viewer.close()
@@ -106,15 +110,43 @@ class CopterEnv(gym.Env):
             return
 
         if self.viewer is None:
-            from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(500,500)
             self.viewer.set_bounds(-6, 6,-1, 11)
-            self.copter_transform = rendering.Transform()
+
+        # transformed main axis
+        
+        start = (self.copterstatus.position[0], self.copterstatus.altitude)
+        def draw_prop(p):
+            rotated = np.dot(self.copterstatus.rotation_matrix, self.setup.propellers[p].position)
+            end     = (start[0]+rotated[0], start[1]+rotated[2])
+            self.viewer.draw_line(start, end)
             copter = rendering.make_circle(.1)
             copter.set_color(0,0,0)
-            copter.add_attr(self.copter_transform)
-            self.viewer.add_geom(copter)
-
-        self.copter_transform.set_translation(self.copterstatus.position[0], self.copterstatus.altitude)
+            copter.add_attr(rendering.Transform(translation=end))
+            self.viewer.add_onetime(copter)
+        
+        # draw ground
         self.viewer.draw_line((-10, 0.0), (10, 0.0))
+       
+        # draw current orientation
+        rotated = np.dot(self.copterstatus.rotation_matrix, [0,0,0.5])
+        self.viewer.draw_line(start, 
+                                (start[0]+rotated[0], start[1]+rotated[2]))
+        
+        # draw target orientation
+        rotated = np.dot(geo.make_quaternion(self.target[0], self.target[1], self.target[2]).rotation_matrix,
+                         [0,0,0.5])
+        err = np.max(np.abs(self.copterstatus.attitude - self.target))
+        if err < self.fail_threshold:
+            color = (0.0, 0.5, 0.0)
+        else:
+            color = (1.0, 0.0, 0.0)
+        self.viewer.draw_line(start, 
+                                (start[0]+rotated[0], start[1]+rotated[2]),
+                                color=color)
+        
+        draw_prop(0)
+        draw_prop(1)
+        draw_prop(2)
+        draw_prop(3)
         return self.viewer.render(return_rgb_array = mode=='rgb_array')

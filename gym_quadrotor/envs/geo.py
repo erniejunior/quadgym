@@ -31,12 +31,12 @@ class Quaternion(object):
         if self._matrix is not None:
             return self._matrix
 
-        x = self.x()
-        y = self.y()
-        z = self.z()
-        w = self.w()
+        x = self.x
+        y = self.y
+        z = self.z
+        w = self.w
 
-        matrix = np.zeros(3, 3)
+        matrix = np.zeros((3, 3))
         matrix[0, 0] = 1 - 2*(y*y + z*z)
         matrix[0, 1] = 2*(x*y - w*z)
         matrix[0, 2] = 2*(x*z - w*y)
@@ -55,7 +55,7 @@ def bot(vector, axis):
     return vector - np.dot(vector, axis) * axis
 
 def make_quaternion(roll, pitch, yaw):
-    from math import *
+    from math import sin, cos
     croll = cos(roll / 2.0);
     sroll = sin(roll / 2.0);
     cpitch = cos(pitch / 2.0);
