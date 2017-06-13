@@ -79,7 +79,6 @@ class CopterEnv(CopterEnvBase):
         self._control = np.array(action)
         for i in range(10):
             simulate(self.copterstatus, self.setup, self._control, 0.01)
-        self._steps += 1
 
         reward, done = self._calc_reward()
 
@@ -131,7 +130,6 @@ class CopterEnv(CopterEnvBase):
         self.copterstatus.position         = np.array([0.0, 0, 1])
         self.target = self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
         self.copterstatus.attitude = self.target + self.np_random.uniform(low=-5, high=5, size=(3,)) * math.pi / 180
-        self._steps = 0
         self._last_control = np.zeros(4)
         self.center = self.copterstatus.position[0]
 
