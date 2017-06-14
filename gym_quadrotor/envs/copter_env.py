@@ -39,11 +39,12 @@ def _draw_copter(viewer, setup, status):
     for i in range(4): draw_prop(i)
 
 class CopterEnvBase(gym.Env):
-    def __init__(self, strict_actions=True):
+    def __init__(self, strict_actions=True, tasks = None):
         self.viewer = None
         self.setup = CopterSetup()
         self._seed()
         self._strict_action_space = strict_actions
+        self._tasks = [] if tasks is None else tasks
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -57,18 +58,30 @@ class CopterEnvBase(gym.Env):
         for i in range(10):
             simulate(self.copterstatus, self.setup, self._control, 0.01)
 
-        reward, done = self._calc_reward()
+        for task in self._tasks: task.step()
 
-        # random disturbances
-        if self.np_random.rand() < 0.01:
-            self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+        done = False
+        reward = 0.0
+        for task in self._tasks:
+            reward += task.reward(self.copterstatus, self._control)
+            done   |= task.has_failed
+        
+        self._on_step()
 
-        # change target 
-        if self.np_random.rand() < 0.01:
-            self.target += self.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
-
-        self._last_control = self._control
         return self._get_state(), reward, done, {}
+
+    def _reset(self):
+        self.copterstatus = CopterStatus()
+        # start in resting position, but with low angular velocity
+        self.copterstatus.angular_velocity = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
+        self.copterstatus.velocity         = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
+        self.copterstatus.position         = np.array([0.0, 0.0, 1.0])
+        self.copterstatus.attitude         = self.np_random.uniform(low=-5, high=5, size=(3,)) * math.pi / 180
+        self.center                        = self.copterstatus.position[0]
+
+        for task in self._tasks: task.reset()
+
+        return self._get_state()
 
     def _render(self, mode='human', close=False):
         if close:
@@ -89,101 +102,96 @@ class CopterEnvBase(gym.Env):
         _draw_ground(self.viewer, self.center)
         _draw_copter(self.viewer, self.setup, self.copterstatus)
 
-        # finally draw stuff related to the task
-        self._draw_task_specific()
+        # finally draw stuff related to the tasks
+        for task in self._tasks: task.draw(self.viewer, self.copterstatus)
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
 
-class CopterEnv(CopterEnvBase):
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 10
-    }
+class CopterTask(object):
+    def __init__(self, weight=1.0):
+        self.has_failed = False
+        self.weight = weight
 
-    reward_range = (-1.0, 1.0)
+    def reward(self, *args):
+        return self._reward(*args) * self.weight
 
-    def __init__(self):
-        super(CopterEnv, self).__init__()
+    def _reward(self, *args):
+        raise NotImplementedError()
 
-        high = np.array([np.inf]*10)
-        
-        self.observation_space = spaces.Box(-high, high)
-        self.action_space = spaces.Box(0, 1, (4,))
+    def reset(self):
+        self.has_failed = False
+        self._reset()
 
-        self.target         = np.zeros(3)
-        self.threshold      =  2 * math.pi / 180
-        self.fail_threshold = 10 * math.pi / 180
-        self._fail_count    = 0
-    
-    def _step(self, action):
-        self._control = self._control_from_action(action)
-        for i in range(10):
-            simulate(self.copterstatus, self.setup, self._control, 0.01)
+    def _reset(self):
+        pass
 
-        reward, done = self._calc_reward()
+    def draw(self, *args):
+        pass
 
-        # random disturbances
-        if self.np_random.rand() < 0.01:
-            self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+    def step(self):
+        pass
 
-        # change target 
-        if self.np_random.rand() < 0.01:
-            self.target += self.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
+class StayAliveTask(CopterTask):
+    def __init__(self, **kwargs):
+        super(StayAliveTask, self).__init__(**kwargs)
 
-        self._last_control = self._control
+    def _reward(self, copterstatus, control):
+        reward = 0
+        if copterstatus.altitude < 0.0 or copterstatus.altitude > 10:
+            reward = -1
+            self.has_failed = True
+        return reward
 
-    def _control_from_action(self, action):
-        return np.array(action)
+class FlySmoothlyTask(CopterTask):
+    def __init__(self, **kwargs):
+        super(FlySmoothlyTask, self).__init__(**kwargs)
 
-    def _calc_reward(self):
-        err = np.max(np.abs(self.copterstatus.attitude - self.target))
-        done = False
+    def _reward(self, copterstatus, control):
+        # reward for keeping velocities low
+        velmag = np.mean(np.abs(copterstatus.angular_velocity))
+        reward += max(0.0, 0.1 - velmag) 
 
+        # reward for constant control
+        cchange = np.mean(np.abs(control - self._last_control))
+        reward += max(0, 0.1 - 2*cchange)
+
+        self._last_control = control
+
+        return reward / 0.2  # normed to 1
+
+    def _reset(self):
+        self._last_control = np.zeros(4)
+
+class HoldAngleTask(CopterTask):
+    def __init__(self, threshold, fail_threshold, env, **kwargs):
+        super(HoldAngleTask, self).__init__(**kwargs)
+        self.threshold = threshold
+        self.fail_threshold = fail_threshold
+        self.env = env
+
+    def _reward(self, copterstatus, control):
+        attitude = copterstatus.attitude
+        err = np.max(np.abs(attitude - self.target))
         # positive reward for not falling over
         reward = max(0.0, 0.2 * (1 - err / self.fail_threshold))
         if err < self.threshold:
-            merr = np.mean(np.abs(self.copterstatus.attitude - self.target)) # this is guaranteed to be smaller than err
+            merr = np.mean(np.abs(attitude - self.target)) # this is guaranteed to be smaller than err
             rerr = merr / self.threshold
             reward += 1.1 - rerr
 
-        # reward for keeping velocities low
-        velmag = np.mean(np.abs(self.copterstatus.angular_velocity))
-        reward += max(0.0, 0.1 - velmag)
+        return reward
 
-        # reward for constant control
-        cchange = np.mean(np.abs(self._control - self._last_control))
-        reward += max(0, 0.1 - 2*cchange)
-
-        # normalize reward so that we can get at most 1.0 per step
-        reward /= 1.5
-
-        if self.copterstatus.altitude < 0.0 or self.copterstatus.altitude > 10:
-            reward = -1
-            self._fail_count += 1
-            done = True
-
-        return reward, done
-
+    # TODO how do we pass np_random stuff
     def _reset(self):
-        self.copterstatus = CopterStatus()
-        # start in resting position, but with low angular velocity
-        self.copterstatus.angular_velocity = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
-        self.copterstatus.velocity         = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
-        self.copterstatus.position         = np.array([0.0, 0, 1])
-        self.target = self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
-        self.copterstatus.attitude = self.target + self.np_random.uniform(low=-5, high=5, size=(3,)) * math.pi / 180
-        self._last_control = np.zeros(4)
-        self.center = self.copterstatus.position[0]
+        self.target = self.env.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
 
-        return self._get_state()
+    def step(self):
+        # change target 
+        if self.random.rand() < 0.01:
+            self.target += self.env.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
 
-    def _get_state(self):
-        s = self.copterstatus
-        # currently, we ignore position and velocity!
-        return np.concatenate([s.attitude, s.angular_velocity, self.target, [s.position[2]]])
-
-    def _draw_task_specific(self):      
+    def draw(self, viewer, copterstatus):
         # draw target orientation
         start = (self.copterstatus.position[0], self.copterstatus.altitude)
         rotated = np.dot(geo.make_quaternion(self.target[0], self.target[1], self.target[2]).rotation_matrix,
@@ -193,4 +201,42 @@ class CopterEnv(CopterEnvBase):
             color = (0.0, 0.5, 0.0)
         else:
             color = (1.0, 0.0, 0.0)
-        self.viewer.draw_line(start, (start[0]+rotated[0], start[1]+rotated[2]), color=color)
+        viewer.draw_line(start, (start[0]+rotated[0], start[1]+rotated[2]), color=color)
+
+
+
+class CopterEnv(CopterEnvBase):
+    metadata = {
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second' : 10
+    }
+
+    #reward_range = (-1.0, 1.0)
+
+    def __init__(self):
+        # prepare the tasks
+        stayalive = StayAliveTask(weight = 1.0)
+        smooth    = FlySmoothlyTask(weight = 0.2)
+        # TODO for now we pass self along to have consistent random
+        holdang   = HoldAngleTask(2 * math.pi / 180, 10 * math.pi / 180, self, weight = 1.0)
+        super(CopterEnv, self).__init__([stayalive, smooth, holdang])
+
+        high = np.array([np.inf]*10)
+        
+        self.observation_space = spaces.Box(-high, high)
+        self.action_space = spaces.Box(0, 1, (4,))
+    
+    def _on_step(self):
+        # random disturbances
+        if self.np_random.rand() < 0.01:
+            self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+
+    def _control_from_action(self, action):
+        return np.array(action)
+
+
+    def _get_state(self):
+        s = self.copterstatus
+        # currently, we ignore position and velocity!
+        return np.concatenate([s.attitude, s.angular_velocity, self.target, [s.position[2]]])
+
