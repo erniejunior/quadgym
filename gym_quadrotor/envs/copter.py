@@ -39,8 +39,8 @@ class CopterSetup(object):
         self.iI = np.linalg.inv([[8.678e-3,0,0],[0,8.678e-3,0],[0,0,3.217e-2]]) # inverse Inertia (assumed to be diagonal)
 
         cfg = {'a': self.a, 'b': self.b, 'lm': self.lm, 'mu': self.mu, 'axis': [0,0,-1]}
-        P1 = Propeller(d=1, p = self.l*np.array([1,0,0]), **cfg)
-        P2 = Propeller(d=1, p = -self.l*np.array([1,0,0]), **cfg)
+        P1 = Propeller(d=1,  p = self.l*np.array([1,0,0]), **cfg)
+        P2 = Propeller(d=1,  p = -self.l*np.array([1,0,0]), **cfg)
         P3 = Propeller(d=-1, p = self.l*np.array([0,1,0]), **cfg)
         P4 = Propeller(d=-1, p = -self.l*np.array([0,1,0]), **cfg)
 
@@ -71,7 +71,7 @@ def calc_accelerations(setup, status, control):
 
     for i, w in enumerate(ma):
         # TODO scale control to torque
-        rot_acc[i] = w + setup.propellers[i].direction * (control[i] * 0.0075 + 0.025)
+        rot_acc[i] = w + setup.propellers[i].direction * (control[i] * 0.0075)
     #print(lin_acc)
     #print(status.rotor_speeds)
     return lin_acc, ang_acc, rot_acc / setup.J

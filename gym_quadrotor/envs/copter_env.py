@@ -39,6 +39,11 @@ def _draw_copter(viewer, setup, status):
     for i in range(4): draw_prop(i)
 
 class CopterEnvBase(gym.Env):
+    metadata = {
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second' : 50
+    }
+
     def __init__(self, strict_actions=True, tasks = None):
         self.viewer = None
         self.setup = CopterSetup()
@@ -55,7 +60,7 @@ class CopterEnvBase(gym.Env):
             assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
         
         self._control = self._control_from_action(action)
-        for i in range(10):
+        for i in range(2):
             simulate(self.copterstatus, self.setup, self._control, 0.01)
 
         for task in self._tasks: task.step()
@@ -69,6 +74,13 @@ class CopterEnvBase(gym.Env):
         self._on_step()
 
         return self._get_state(), reward, done, {}
+
+    def _get_state(self):
+        s = self.copterstatus
+        # currently, we ignore position and velocity!
+        base_state = [s.attitude, s.angular_velocity, [s.position[2]]]
+        tasks_states = [task.get_state().flatten() for task in self._tasks]
+        return np.concatenate(base_state + tasks_states)
 
     def _reset(self):
         self.copterstatus = CopterStatus()
@@ -107,6 +119,9 @@ class CopterEnvBase(gym.Env):
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
+    def _control_from_action(self, action):
+        raise NotImplementedError()
+
 
 class CopterTask(object):
     def __init__(self, weight=1.0):
@@ -132,6 +147,9 @@ class CopterTask(object):
     def step(self):
         pass
 
+    def get_state(self):
+        return np.array([])
+
 class StayAliveTask(CopterTask):
     def __init__(self, **kwargs):
         super(StayAliveTask, self).__init__(**kwargs)
@@ -150,11 +168,11 @@ class FlySmoothlyTask(CopterTask):
     def _reward(self, copterstatus, control):
         # reward for keeping velocities low
         velmag = np.mean(np.abs(copterstatus.angular_velocity))
-        reward += max(0.0, 0.1 - velmag) 
+        reward = max(0.0, 0.1 - velmag) 
 
         # reward for constant control
         cchange = np.mean(np.abs(control - self._last_control))
-        reward += max(0, 0.1 - 2*cchange)
+        reward += max(0, 0.1 - 10*cchange)
 
         self._last_control = control
 
@@ -188,29 +206,38 @@ class HoldAngleTask(CopterTask):
 
     def step(self):
         # change target 
-        if self.random.rand() < 0.01:
+        if self.env.np_random.rand() < 0.01:
             self.target += self.env.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
 
     def draw(self, viewer, copterstatus):
         # draw target orientation
-        start = (self.copterstatus.position[0], self.copterstatus.altitude)
+        start = (copterstatus.position[0], copterstatus.altitude)
         rotated = np.dot(geo.make_quaternion(self.target[0], self.target[1], self.target[2]).rotation_matrix,
                          [0,0,0.5])
-        err = np.max(np.abs(self.copterstatus.attitude - self.target))
+        err = np.max(np.abs(copterstatus.attitude - self.target))
         if err < self.fail_threshold:
             color = (0.0, 0.5, 0.0)
         else:
             color = (1.0, 0.0, 0.0)
         viewer.draw_line(start, (start[0]+rotated[0], start[1]+rotated[2]), color=color)
 
+    def get_state(self):
+        return np.array([self.target])
 
+"""
+def coupled_motor_action(action):
+    total = action[0]
+    roll  = action[1]
+    pitch = action[2]
+    yaw   = action[3]
+    a = total / 4 + pitch / 2 + yaw / 4
+    b = total / 4 - roll  / 2 - yaw / 4
+    c = total / 4 - pitch / 2 + yaw / 4
+    d = total / 4 + roll  / 2 - yaw / 4
+    return np.array([a,b,c,d])
+"""
 
 class CopterEnv(CopterEnvBase):
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 10
-    }
-
     #reward_range = (-1.0, 1.0)
 
     def __init__(self):
@@ -219,7 +246,7 @@ class CopterEnv(CopterEnvBase):
         smooth    = FlySmoothlyTask(weight = 0.2)
         # TODO for now we pass self along to have consistent random
         holdang   = HoldAngleTask(2 * math.pi / 180, 10 * math.pi / 180, self, weight = 1.0)
-        super(CopterEnv, self).__init__([stayalive, smooth, holdang])
+        super(CopterEnv, self).__init__(tasks = [stayalive, smooth, holdang])
 
         high = np.array([np.inf]*10)
         
@@ -232,11 +259,38 @@ class CopterEnv(CopterEnvBase):
             self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
 
     def _control_from_action(self, action):
-        return np.array(action)
+        return np.array(action) + 3.33
 
 
-    def _get_state(self):
-        s = self.copterstatus
-        # currently, we ignore position and velocity!
-        return np.concatenate([s.attitude, s.angular_velocity, self.target, [s.position[2]]])
 
+class CopterEnvEuler(CopterEnvBase):
+    def __init__(self):
+        # prepare the tasks
+        stayalive = StayAliveTask(weight = 1.0)
+        smooth    = FlySmoothlyTask(weight = 0.2)
+        # TODO for now we pass self along to have consistent random
+        holdang   = HoldAngleTask(2 * math.pi / 180, 10 * math.pi / 180, self, weight = 1.0)
+        super(CopterEnvEuler, self).__init__(tasks = [stayalive, smooth, holdang])
+
+        high = np.array([np.inf]*10)
+        
+        self.observation_space = spaces.Box(-high, high)
+        self.action_space = spaces.Box(np.array([0.0, -1.0, -1.0, -1.0]), np.ones(4))
+    
+    def _on_step(self):
+        # random disturbances
+        if self.np_random.rand() < 0.01:
+            self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+
+    def _control_from_action(self, action):
+        # TODO add tests to show that these arguments are ordered correctly
+        total = action[0] + 3.33*4
+        roll  = action[1]
+        pitch = action[2]
+        yaw   = action[3]
+        a = total / 4 + pitch / 2 + yaw / 4
+        b = total / 4 - roll  / 2 - yaw / 4
+        c = total / 4 - pitch / 2 + yaw / 4
+        d = total / 4 + roll  / 2 - yaw / 4
+        print(a, b, c, d)
+        return np.array([a, b, c, d])
