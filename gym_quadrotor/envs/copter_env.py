@@ -33,7 +33,7 @@ def _draw_copter(viewer, setup, status):
         viewer.add_onetime(copter)
    
     # draw current orientation
-    rotated = np.dot(trafo, [0,0,0.5])
+    rotated = np.dot(trafo, [0, 0, 0.5])
     viewer.draw_line(start, (start[0]+rotated[0], start[1]+rotated[2]))
 
     for i in range(4): draw_prop(i)
@@ -73,7 +73,7 @@ class CopterEnvBase(gym.Env):
         
         self._on_step()
 
-        return self._get_state(), reward, done, {}
+        return self._get_state(), reward, done, {"rotor-speed": self.copterstatus.rotor_speeds}
 
     def _get_state(self):
         s = self.copterstatus
@@ -224,18 +224,6 @@ class HoldAngleTask(CopterTask):
     def get_state(self):
         return np.array([self.target])
 
-"""
-def coupled_motor_action(action):
-    total = action[0]
-    roll  = action[1]
-    pitch = action[2]
-    yaw   = action[3]
-    a = total / 4 + pitch / 2 + yaw / 4
-    b = total / 4 - roll  / 2 - yaw / 4
-    c = total / 4 - pitch / 2 + yaw / 4
-    d = total / 4 + roll  / 2 - yaw / 4
-    return np.array([a,b,c,d])
-"""
 
 class CopterEnv(CopterEnvBase):
     #reward_range = (-1.0, 1.0)
@@ -256,10 +244,10 @@ class CopterEnv(CopterEnvBase):
     def _on_step(self):
         # random disturbances
         if self.np_random.rand() < 0.01:
-            self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+            self.copterstatus.rotor_speeds += self.np_random.uniform(low=-2, high=2, size=(4,))
 
     def _control_from_action(self, action):
-        return np.array(action) + 3.33
+        return np.array(action) + 3.7
 
 
 
@@ -280,17 +268,19 @@ class CopterEnvEuler(CopterEnvBase):
     def _on_step(self):
         # random disturbances
         if self.np_random.rand() < 0.01:
-            self.copterstatus.angular_velocity += self.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+            self.copterstatus.rotor_speeds += self.np_random.uniform(low=-2, high=2, size=(4,))
 
     def _control_from_action(self, action):
         # TODO add tests to show that these arguments are ordered correctly
-        total = action[0] + 3.33*4
-        roll  = action[1]
-        pitch = action[2]
+        total = action[0] + 3.7*4
+        roll  = action[1]   # rotation about x axis
+        pitch = action[2]   # rotation about y axis
         yaw   = action[3]
-        a = total / 4 + pitch / 2 + yaw / 4
-        b = total / 4 - roll  / 2 - yaw / 4
-        c = total / 4 - pitch / 2 + yaw / 4
-        d = total / 4 + roll  / 2 - yaw / 4
-        print(a, b, c, d)
-        return np.array([a, b, c, d])
+        return coupled_motor_action(total, roll, pitch, yaw)
+
+def coupled_motor_action(total, roll, pitch, yaw):
+    a = total / 4 - pitch / 2 + yaw / 4
+    b = total / 4 + pitch / 2 + yaw / 4
+    c = total / 4 + roll  / 2 - yaw / 4
+    d = total / 4 - roll  / 2 - yaw / 4
+    return np.array([a, b, c, d])

@@ -8,12 +8,12 @@ from .propeller import Propeller
 from .geo import make_quaternion
 
 class CopterStatus(object):
-    def __init__(self):
-        self.position = np.zeros(3)
-        self.velocity = np.zeros(3)
-        self.attitude = np.zeros(3)
-        self.angular_velocity = np.zeros(3)
-        self.rotor_speeds = np.array([1, 1, -1, -1.0]) * 200.0
+    def __init__(self, pos=None, vel=None, att=None, avel=None, rspeed=None):
+        self.position = np.zeros(3) if pos is None else pos
+        self.velocity = np.zeros(3) if vel is None else vel
+        self.attitude = np.zeros(3) if att is None else att
+        self.angular_velocity = np.zeros(3) if avel is None else avel
+        self.rotor_speeds = np.array([1, 1, -1, -1.0]) * 200.0 if rspeed is None else rspeed
 
     @property
     def altitude(self):
@@ -22,6 +22,26 @@ class CopterStatus(object):
     @property
     def rotation_matrix(self):
         return make_quaternion(self.attitude[0], self.attitude[1], self.attitude[2]).rotation_matrix
+
+    def to_world_direction(self, axis):
+        return np.dot(self.rotation_matrix, axis)
+
+    def to_world_position(self, pos):
+        return self.to_world_direction(pos) + self.position
+
+    def to_local_direction(self, axis):
+        return np.dot(np.linalg.inv(self.rotation_matrix), axis)
+
+    def to_local_position(self, pos):
+        return self.to_local_direction(pos - self.position)
+
+    def __repr__(self):
+        return "CopterStatus(%r, %r, %r, %r, %r)"%(self.position, self.velocity, self.attitude, self.angular_velocity, 
+            self.rotor_speeds)
+
+    def __str__(self):
+        return "CopterStatus(ṕos=%s, vel=%s, att=%s, avel=%s, rspeed=%s)"%(self.position, self.velocity, self.attitude, self.angular_velocity, 
+            self.rotor_speeds)
 
 class CopterSetup(object):
     def __init__(self):
@@ -71,10 +91,12 @@ def calc_accelerations(setup, status, control):
 
     for i, w in enumerate(ma):
         # TODO scale control to torque
-        rot_acc[i] = w + setup.propellers[i].direction * (control[i] * 0.0075)
+        rot_acc[i]  = w + setup.propellers[i].direction * (control[i] * 0.0075)
+        rot_acc[i] /= setup.J
+        # TODO the inverse of these torques should act on the copter
     #print(lin_acc)
     #print(status.rotor_speeds)
-    return lin_acc, ang_acc, rot_acc / setup.J
+    return lin_acc, ang_acc, rot_acc
 
 def simulate(status, params, control, dt):
     ap, aa, ar  = calc_accelerations(params, status, control)
@@ -83,6 +105,7 @@ def simulate(status, params, control, dt):
     status.velocity += ap * dt
 
     # angle update
+    aa = status.to_local_direction(aa)
     status.attitude += status.angular_velocity * dt + 0.5 * aa * dt * dt
     status.angular_velocity += aa * dt
 

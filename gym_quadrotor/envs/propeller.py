@@ -38,11 +38,9 @@ class Propeller(object):
         """
         velocity = copter_status.velocity
         ang_vel  = copter_status.angular_velocity
-        trafo    = copter_status.attitude
-        trafo    = make_quaternion(trafo[0], trafo[1], trafo[2]).rotation_matrix
         # convert axis from copter to world frame
-        axis     = np.dot(trafo, self._axis)
-        pos      = np.dot(trafo, self._position)
+        axis     = copter_status.to_world_direction(self._axis)
+        pos      = copter_status.to_world_direction(self._position)
 
         F        = force(self, speed, axis, velocity, ang_vel)
         M        = moment(self, speed, axis, velocity, ang_vel)
