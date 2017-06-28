@@ -247,7 +247,7 @@ class CopterEnv(CopterEnvBase):
             self.copterstatus.rotor_speeds += self.np_random.uniform(low=-2, high=2, size=(4,))
 
     def _control_from_action(self, action):
-        return np.array(action) + 3.7
+        return np.array(action) + 3.3
 
 
 
@@ -272,15 +272,15 @@ class CopterEnvEuler(CopterEnvBase):
 
     def _control_from_action(self, action):
         # TODO add tests to show that these arguments are ordered correctly
-        total = action[0] + 3.7*4
-        roll  = action[1]   # rotation about x axis
-        pitch = action[2]   # rotation about y axis
-        yaw   = action[3]
-        return coupled_motor_action(total, roll, pitch, yaw)
+        total = action[0] * 4
+        roll  = action[1] / 2   # rotation about x axis
+        pitch = action[2] / 2  # rotation about y axis
+        yaw   = action[3] / 2
+        return coupled_motor_action(total, roll, pitch, yaw) + 3.3
 
 def coupled_motor_action(total, roll, pitch, yaw):
     a = total / 4 - pitch / 2 + yaw / 4
     b = total / 4 + pitch / 2 + yaw / 4
     c = total / 4 + roll  / 2 - yaw / 4
     d = total / 4 - roll  / 2 - yaw / 4
-    return np.array([a, b, c, d])
+    return np.clip([a, b, c, d], 0.0, 1.0)
