@@ -283,4 +283,4 @@ def coupled_motor_action(total, roll, pitch, yaw):
     b = total / 4 + pitch / 2 + yaw / 4
     c = total / 4 + roll  / 2 - yaw / 4
     d = total / 4 - roll  / 2 - yaw / 4
-    return np.clip([a, b, c, d], 0.0, 1.0)
+    return np.array([a, b, c, d])

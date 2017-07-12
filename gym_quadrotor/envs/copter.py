@@ -54,7 +54,7 @@ class CopterSetup(object):
         self.lm = np.array([1, 1, 1, 1]) * 1e-7
 
         # motor data
-        self.motor_torque = 0.0301 # [NM]
+        self.motor_torque = 0.0075 # [NM]
 
         self.l = 0.31   # Arm length
         self.m = 0.723  # mass
@@ -88,19 +88,18 @@ def calc_forces(status, setup):
 def calc_accelerations(setup, status, control):
     force, moment, ma = calc_forces(status, setup)
 
-    lin_acc = force / setup.m
-    ang_acc = np.dot(setup.iI, moment)
     rot_acc = np.array(ma)
-
     motor_torque = control * setup.motor_torque
 
     for i, w in enumerate(ma):
-        # TODO scale control to torque
-        rot_acc[i]  = w + setup.propellers[i].direction * motor_torque[i]
-        rot_acc[i] /= setup.J
-        # TODO the inverse of these torques should act on the copter
-    #print(lin_acc)
-    #print(status.rotor_speeds)
+        torque      = setup.propellers[i].direction * motor_torque[i]
+        rot_acc[i]  = (w + torque) / setup.J
+        # the motor creates the reverse toruqe on the helicopter.
+        moment     -= torque * status.to_world_direction(setup.propellers[i].axis)
+    
+    lin_acc = force / setup.m
+    ang_acc = np.dot(setup.iI, moment)
+
     return lin_acc, ang_acc, rot_acc
 
 def simulate(status, params, control, dt):
