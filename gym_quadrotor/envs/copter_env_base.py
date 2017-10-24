@@ -78,7 +78,7 @@ class CopterEnvBase(gym.Env):
         s = self.copterstatus
         # currently, we ignore position and velocity!
         base_state = [s.attitude, s.angular_velocity, s.velocity, [s.position[2]]]
-        tasks_states = [task.get_state().flatten() for task in self._tasks]
+        tasks_states = [task.get_state(s).flatten() for task in self._tasks]
         return np.concatenate(base_state + tasks_states)
 
     def _reset(self):

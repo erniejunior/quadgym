@@ -38,7 +38,7 @@ class HoverCopterEnv(CopterEnvBase):
         hover = HoverTask(5 * math.pi / 180, 25 * math.pi / 180, weight=1.0)
         super(HoverCopterEnv, self).__init__(tasks=[smooth, stay_alive, hover])
 
-        high = np.array([np.inf] * 10)
+        high = np.array([np.inf] * 11)
 
         self.observation_space = spaces.Box(-high, high)
 
