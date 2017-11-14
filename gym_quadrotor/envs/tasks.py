@@ -123,7 +123,8 @@ class HoverTask(CopterTask):
 
     def _reward(self, copterstatus, control):
         attitude = copterstatus.attitude
-        err = np.mean(np.abs(attitude))
+        # yaw is irrelevant for hovering
+        err = np.mean(np.abs(attitude[0:2]))
         # positive reward for not falling over
         reward = max(0.0, 1.0 - (err / self.fail_threshold)**2)
         reward += max(0.0, 1.0 - np.mean(copterstatus.velocity**2)) * 0.25

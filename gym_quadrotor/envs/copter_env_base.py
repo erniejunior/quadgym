@@ -87,7 +87,9 @@ class CopterEnvBase(gym.Env):
         self.copterstatus.angular_velocity = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
         self.copterstatus.velocity         = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
         self.copterstatus.position         = np.array([0.0, 0.0, self.np_random.uniform(low=1.0, high=9.0)])
+        # small pitch, roll values, random yaw angle
         self.copterstatus.attitude         = self.np_random.uniform(low=-5, high=5, size=(3,)) * math.pi / 180
+        self.copterstatus.attitude[2]      = self.np_random.uniform(low=-math.pi, high=math.pi)
         self.center                        = self.copterstatus.position[0]
 
         for task in self._tasks:
