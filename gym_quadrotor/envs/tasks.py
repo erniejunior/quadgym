@@ -4,30 +4,77 @@ from gym_quadrotor.envs import geo
 
 
 class CopterTask(object):
+    """
+    CopterTask is the base class for task objects that can be added to a CopterEnv environment.
+    A task defines a reward function and may add additional dimensions to the state. Each task
+    has an assigned weight that modulates the reward. A task can set itself up as failed, which
+    will cause the current learning episode to terminate.
+
+    For consistent random number generation each CopterTask gets its own RandomState object
+    that is supplied by the current environment.
+    """
+
     def __init__(self, weight=1.0):
         self.has_failed = False
         self.weight = weight
+        self._reward = 0.0
 
-    def reward(self, *args):
-        return self._reward(*args) * self.weight
-
-    def _reward(self, *args):
-        raise NotImplementedError()
+    def reward(self):
+        """
+        Gets the weighted reward for the last time step.
+        """
+        return self._reward * self.weight
 
     def reset(self, status):
+        """
+        Called whenever the environment resets.
+        """
         self.has_failed = False
         self._reset(status)
 
     def _reset(self, status):
+        """
+        This gets called when the environment has been reset. It gets passed
+        the status of the quad copter after the reset.
+        :param status: CopterStatus of copter after reset.
+        :return: Nothing.
+        """
         pass
 
-    def draw(self, *args):
+    def draw(self, viewer, status):
+        """
+        Override this function if additional data should be drawn to the visualizations for this task.
+        :param viewer: The viewer object in which the visualization is drawn.
+        :param status: Current status of the copter.
+        """
         pass
 
-    def step(self):
-        pass
+    def step(self, status, control):
+        """
+        Called for each step of the simulation.
+        :param status: Copter status.
+        :param control: Current control input.
+        :return: Nothing.
+        """
+        self._reward = self._step(status, control)
+
+    def _step(self, status, control):
+        """
+        Called for each step of the simulation. Calculate reward and update the task.
+        This function has to be implemented in derived classes.
+        :param status: Copter status.
+        :param control: Current control input.
+        :return: Reward for the current step.
+        """
+        raise NotImplementedError()
 
     def get_state(self, status):
+        """
+        Gets the state of the task, i.e. all the data that should be appended to the
+        state visible to the learning agent.
+        :param status: The status of the copter.
+        :return: An array with the state variables.
+        """
         return np.array([])
 
 
@@ -35,9 +82,9 @@ class StayAliveTask(CopterTask):
     def __init__(self, **kwargs):
         super(StayAliveTask, self).__init__(**kwargs)
 
-    def _reward(self, copterstatus, control):
+    def _step(self, status, control):
         reward = 0
-        if copterstatus.altitude < 0.0 or copterstatus.altitude > 10:
+        if status.altitude < 0.0 or status.altitude > 10:
             reward = -10
             self.has_failed = True
         #elif copterstatus.altitude < 0.2 or copterstatus.altitude > 9.8:
@@ -49,9 +96,9 @@ class FlySmoothlyTask(CopterTask):
     def __init__(self, **kwargs):
         super(FlySmoothlyTask, self).__init__(**kwargs)
 
-    def _reward(self, copterstatus, control):
+    def _step(self, status, control):
         # reward for keeping velocities low
-        velmag = np.mean(np.abs(copterstatus.angular_velocity))
+        velmag = np.mean(np.abs(status.angular_velocity))
         reward = max(0.0, 0.1 - velmag)
 
         # reward for constant control
@@ -73,8 +120,9 @@ class HoldAngleTask(CopterTask):
         self.fail_threshold = fail_threshold
         self.env = env
 
-    def _reward(self, copterstatus, control):
-        attitude = copterstatus.attitude
+    def _step(self, status, control):
+        # reward calculation
+        attitude = status.attitude
         err = np.mean(np.abs(attitude - self.target))
         # positive reward for not falling over
         reward = max(0.0, 0.2 * (1 - err / self.fail_threshold))
@@ -87,16 +135,15 @@ class HoldAngleTask(CopterTask):
             reward = -10
             self.has_failed = True
 
+        # change target
+        if self.env.np_random.rand() < 0.01:
+            self.target += self.env.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
+
         return reward
 
     # TODO how do we pass np_random stuff
     def _reset(self, status):
         self.target = self.env.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
-
-    def step(self):
-        # change target
-        if self.env.np_random.rand() < 0.01:
-            self.target += self.env.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
 
     def draw(self, viewer, copterstatus):
         # draw target orientation
@@ -121,16 +168,17 @@ class HoverTask(CopterTask):
         self.fail_threshold = fail_threshold
         self.target_altitude = 1.0
 
-    def _reward(self, copterstatus, control):
-        attitude = copterstatus.attitude
+    def _step(self, status, control):
+        attitude = status.attitude
         # yaw is irrelevant for hovering
         err = np.mean(np.abs(attitude[0:2]))
+        perr = np.abs(status.altitude - self.target_altitude)
         # positive reward for not falling over
         reward = max(0.0, 1.0 - (err / self.fail_threshold)**2)
-        reward += max(0.0, 1.0 - np.mean(copterstatus.velocity**2)) * 0.25
-        reward += max(0.0, 1.0 - (copterstatus.altitude - self.target_altitude)**2) * 0.25
+        reward += max(0.0, 1.0 - np.mean(status.velocity ** 2)) * 0.25
+        reward += max(0.0, 1.0 - perr**2) * 0.25
 
-        if err > self.fail_threshold:
+        if err > self.fail_threshold or perr > 1:
             reward = -10
             self.has_failed = True
 
@@ -149,7 +197,7 @@ class HoverTask(CopterTask):
         viewer.draw_line(start, (start[0]+rotated[0], start[1]+rotated[2]), color=color)
 
     def _reset(self, status):
-        self.target_altitude = status.altitude
+        self.target_altitude = status.altitude + np.random.uniform(low=-0.2, high=0.2)
 
     def get_state(self, status):
         return np.array([status.altitude - self.target_altitude])
