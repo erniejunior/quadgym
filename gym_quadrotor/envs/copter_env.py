@@ -15,7 +15,7 @@ class CopterEnv(CopterEnvBase):
         stayalive = StayAliveTask(weight=1.0)
         smooth    = FlySmoothlyTask(weight=0.2)
         # TODO for now we pass self along to have consistent random
-        holdang = HoldAngleTask(5 * math.pi / 180, 25 * math.pi / 180, self, weight=1.0)
+        holdang = HoldAngleTask(5 * math.pi / 180, 25 * math.pi / 180, weight=1.0)
         super(CopterEnv, self).__init__(tasks = [holdang, stayalive])
 
         high = np.array([np.inf]*13)

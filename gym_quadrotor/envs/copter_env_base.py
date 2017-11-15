@@ -50,11 +50,13 @@ class CopterEnvBase(gym.Env):
     def __init__(self, tasks = None):
         self.viewer = None
         self.setup = CopterSetup()
-        self._seed()
         self._tasks = [] if tasks is None else tasks
 
     def _seed(self, seed=None):
         self.random_state, seed = seeding.np_random(seed)
+        for task in self._tasks:  # type: "CopterTask"
+            # TODO generate a seed sequence instead of using the same seed here.
+            task.seed(seed)
         return [seed]
 
     def _step(self, action):
@@ -62,12 +64,12 @@ class CopterEnvBase(gym.Env):
         simulate(self.copterstatus, self.setup, self._control, 0.02)
 
         for task in self._tasks:
-            task.step()
+            task.step(self.copterstatus, self._control)
 
         done = False
         reward = 0.0
         for task in self._tasks:
-            reward += task.reward(self.copterstatus, self._control)
+            reward += task.reward()
             done   |= task.has_failed
 
         self._on_step()

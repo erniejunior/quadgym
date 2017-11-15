@@ -18,6 +18,17 @@ class CopterTask(object):
         self.has_failed = False
         self.weight = weight
         self._reward = 0.0
+        self._random_state = None
+
+    def seed(self, seed):
+        """
+        Initialise the task local random number generator with the given `seed`.
+        """
+        self._random_state = np.random.RandomState(seed)
+
+    @property
+    def rng(self):
+        return self._random_state
 
     def reward(self):
         """
@@ -114,11 +125,10 @@ class FlySmoothlyTask(CopterTask):
 
 
 class HoldAngleTask(CopterTask):
-    def __init__(self, threshold, fail_threshold, env, **kwargs):
+    def __init__(self, threshold, fail_threshold, **kwargs):
         super(HoldAngleTask, self).__init__(**kwargs)
         self.threshold = threshold
         self.fail_threshold = fail_threshold
-        self.env = env
 
     def _step(self, status, control):
         # reward calculation
@@ -136,14 +146,14 @@ class HoldAngleTask(CopterTask):
             self.has_failed = True
 
         # change target
-        if self.env.np_random.rand() < 0.01:
-            self.target += self.env.np_random.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
+        if self.rng.rand() < 0.01:
+            self.target += self.rng.uniform(low=-3, high=3, size=(3,)) * math.pi / 180
 
         return reward
 
     # TODO how do we pass np_random stuff
     def _reset(self, status):
-        self.target = self.env.np_random.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
+        self.target = self.rng.uniform(low=-10, high=10, size=(3,)) * math.pi / 180
 
     def draw(self, viewer, copterstatus):
         # draw target orientation
@@ -197,7 +207,7 @@ class HoverTask(CopterTask):
         viewer.draw_line(start, (start[0]+rotated[0], start[1]+rotated[2]), color=color)
 
     def _reset(self, status):
-        self.target_altitude = status.altitude + np.random.uniform(low=-0.2, high=0.2)
+        self.target_altitude = status.altitude + self.rng.uniform(low=-0.2, high=0.2)
 
     def get_state(self, status):
         return np.array([status.altitude - self.target_altitude])
