@@ -54,7 +54,7 @@ class CopterEnvBase(gym.Env):
         self._tasks = [] if tasks is None else tasks
 
     def _seed(self, seed=None):
-        self.np_random, seed = seeding.np_random(seed)
+        self.random_state, seed = seeding.np_random(seed)
         return [seed]
 
     def _step(self, action):
@@ -84,12 +84,12 @@ class CopterEnvBase(gym.Env):
     def _reset(self):
         self.copterstatus = CopterStatus()
         # start in resting position, but with low angular velocity
-        self.copterstatus.angular_velocity = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
-        self.copterstatus.velocity         = self.np_random.uniform(low=-0.1, high=0.1, size=(3,))
-        self.copterstatus.position         = np.array([0.0, 0.0, self.np_random.uniform(low=1.0, high=9.0)])
+        self.copterstatus.angular_velocity = self.random_state.uniform(low=-0.1, high=0.1, size=(3,))
+        self.copterstatus.velocity         = self.random_state.uniform(low=-0.1, high=0.1, size=(3,))
+        self.copterstatus.position         = np.array([0.0, 0.0, self.random_state.uniform(low=1.0, high=9.0)])
         # small pitch, roll values, random yaw angle
-        self.copterstatus.attitude         = self.np_random.uniform(low=-5, high=5, size=(3,)) * math.pi / 180
-        self.copterstatus.attitude[2]      = self.np_random.uniform(low=-math.pi, high=math.pi)
+        self.copterstatus.attitude         = self.random_state.uniform(low=-5, high=5, size=(3,)) * math.pi / 180
+        self.copterstatus.attitude[2]      = self.random_state.uniform(low=-math.pi, high=math.pi)
         self.center                        = self.copterstatus.position[0]
 
         for task in self._tasks:

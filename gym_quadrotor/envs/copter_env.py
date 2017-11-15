@@ -24,8 +24,8 @@ class CopterEnv(CopterEnvBase):
     
     def _on_step(self):
         # random disturbances
-        if self.np_random.rand() < 0.01:
-            self.copterstatus.rotor_speeds += self.np_random.uniform(low=-2, high=2, size=(4,))
+        if self.random_state.rand() < 0.01:
+            self.copterstatus.rotor_speeds += self.random_state.uniform(low=-2, high=2, size=(4,))
 
 
 class HoverCopterEnv(CopterEnvBase):
@@ -44,5 +44,5 @@ class HoverCopterEnv(CopterEnvBase):
 
     def _on_step(self):
         # random disturbances
-        if self.np_random.rand() < 0.01:
-            self.copterstatus.rotor_speeds += self.np_random.uniform(low=-2, high=2, size=(4,))
+        if self.random_state.rand() < 0.01:
+            self.copterstatus.rotor_speeds += self.random_state.uniform(low=-2, high=2, size=(4,))
