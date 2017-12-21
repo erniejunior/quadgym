@@ -94,11 +94,11 @@ class StayAliveTask(CopterTask):
         super(StayAliveTask, self).__init__(**kwargs)
 
     def _step(self, status, control):
-        reward = 0
+        reward = 0.0
         if status.altitude < 0.0 or status.altitude > 10:
-            reward = -10
+            reward = -50
             self.has_failed = True
-        #elif copterstatus.altitude < 0.2 or copterstatus.altitude > 9.8:
+        # elif status.altitude < 0.2 or status.altitude > 9.8:
         #    reward = -0.1
         return reward
 
@@ -109,16 +109,19 @@ class FlySmoothlyTask(CopterTask):
 
     def _step(self, status, control):
         # reward for keeping velocities low
-        velmag = np.mean(np.abs(status.angular_velocity))
-        reward = max(0.0, 0.1 - velmag)
+        velmag = np.mean(status.angular_velocity**2)
+        reward = max(0.0, 0.5 - velmag)
 
         # reward for constant control
         cchange = np.mean(np.abs(control - self._last_control))
-        reward += max(0, 0.1 - 10*cchange)
+        reward += max(0, 0.1 - 10*cchange) * 5.0
+
+        # reward for minimal control
+        # reward += 0.1 * max(0, 1.0 - np.mean(control))
 
         self._last_control = control
 
-        return reward / 0.2  # normed to 1
+        return reward
 
     def _reset(self, status):
         self._last_control = np.zeros(4)
@@ -181,25 +184,26 @@ class HoverTask(CopterTask):
     def _step(self, status, control):
         attitude = status.attitude
         # yaw is irrelevant for hovering
-        err = np.mean(np.abs(attitude[0:2]))
+        err = np.mean(attitude[0:2]**2)
         perr = np.abs(status.altitude - self.target_altitude)
+        verr = np.mean(status.velocity ** 2)
         # positive reward for not falling over
-        reward = max(0.0, 1.0 - (err / self.fail_threshold)**2)
-        reward += max(0.0, 1.0 - np.mean(status.velocity ** 2)) * 0.25
-        reward += max(0.0, 1.0 - perr**2) * 0.25
+        reward = -err / self.threshold**2
+        reward -= verr * 0.25
+        reward -= perr**2 * 0.25
 
-        if err > self.fail_threshold or perr > 1:
-            reward = -10
+        if np.max(np.abs(attitude[0:2])) > self.fail_threshold or perr > 1:
             self.has_failed = True
+            return -50
 
-        return reward
+        return 1.0 + np.tanh(reward)
 
     def draw(self, viewer, copterstatus):
         # draw target orientation
         start = (copterstatus.position[0], copterstatus.altitude)
         rotated = np.dot(geo.make_quaternion(0, 0, 0).rotation_matrix,
                          [0, 0, 0.5])
-        err = np.mean(np.abs(copterstatus.attitude))
+        err = np.mean(np.abs(copterstatus.attitude[0:2]))
         if err < self.threshold:
             color = (0.0, 0.5, 0.0)
         else:
