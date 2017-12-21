@@ -8,8 +8,6 @@ from .copter import *
 
 
 class CopterEnv(CopterEnvBase):
-    #reward_range = (-1.0, 1.0)
-
     def __init__(self):
         # prepare the tasks
         stayalive = StayAliveTask(weight=1.0)
@@ -29,12 +27,10 @@ class CopterEnv(CopterEnvBase):
 
 
 class HoverCopterEnv(CopterEnvBase):
-    # reward_range = (-1.0, 1.0)
-
     def __init__(self):
         # prepare the tasks
         stay_alive = StayAliveTask(weight=1.0)
-        smooth = FlySmoothlyTask(weight=0.05)
+        smooth = FlySmoothlyTask(weight=0.1)
         hover = HoverTask(5 * math.pi / 180, 25 * math.pi / 180, weight=1.0)
         super(HoverCopterEnv, self).__init__(tasks=[smooth, stay_alive, hover])
 

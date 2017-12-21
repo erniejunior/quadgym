@@ -17,7 +17,7 @@ class AngularControlWrapper(ActionWrapper):
         roll = action[1] * 2  # rotation about x axis
         pitch = action[2] * 2  # rotation about y axis
         yaw = action[3] * 2
-        # total = 0 should be action hover_offset, so rescale
+        # total = 0 should be action hover_offset, so shift
         # total = 1 should be action [1, 1, 1, 1], so rescale
         return coupled_motor_action(total, roll, pitch, yaw) * (1.0 - self._hover_offset) + self._hover_offset
 
