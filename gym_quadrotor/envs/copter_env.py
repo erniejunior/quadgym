@@ -44,7 +44,7 @@ class CopterEnvBase(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, strict_actions=True, tasks = None):
+    def __init__(self, strict_actions=False, tasks = None):
         self.viewer = None
         self.setup = CopterSetup()
         self._seed()
