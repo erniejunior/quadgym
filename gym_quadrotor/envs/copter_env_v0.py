@@ -225,7 +225,7 @@ class HoldAngleTask(CopterTask):
         return np.array([self.target])
 
 
-class CopterEnv(CopterEnvBase):
+class CopterEnv_v0(CopterEnvBase):
     #reward_range = (-1.0, 1.0)
 
     def __init__(self):
@@ -234,7 +234,7 @@ class CopterEnv(CopterEnvBase):
         smooth    = FlySmoothlyTask(weight = 0.2)
         # TODO for now we pass self along to have consistent random
         holdang   = HoldAngleTask(2 * math.pi / 180, 10 * math.pi / 180, self, weight = 1.0)
-        super(CopterEnv, self).__init__(tasks = [stayalive, smooth, holdang])
+        super(CopterEnv_v0, self).__init__(tasks = [stayalive, smooth, holdang])
 
         high = np.array([np.inf]*10)
         
@@ -251,14 +251,14 @@ class CopterEnv(CopterEnvBase):
 
 
 
-class CopterEnvEuler(CopterEnvBase):
+class CopterEnvEuler_v0(CopterEnvBase):
     def __init__(self):
         # prepare the tasks
         stayalive = StayAliveTask(weight = 1.0)
         smooth    = FlySmoothlyTask(weight = 0.2)
         # TODO for now we pass self along to have consistent random
         holdang   = HoldAngleTask(2 * math.pi / 180, 10 * math.pi / 180, self, weight = 1.0)
-        super(CopterEnvEuler, self).__init__(tasks = [stayalive, smooth, holdang])
+        super(CopterEnvEuler_v0, self).__init__(tasks = [stayalive, smooth, holdang])
 
         high = np.array([np.inf]*10)
         
