@@ -96,8 +96,6 @@ class CopterEnvBase(gym.Env):
         _draw_ground(self.viewer, self.center)
         _draw_copter(self.viewer, self.setup, self.copterstatus)
 
-        # finally draw stuff related to the tasks
-        for task in self._tasks: task.draw(self.viewer, self.copterstatus)
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
